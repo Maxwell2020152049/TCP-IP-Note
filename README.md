@@ -661,3 +661,306 @@ file descriptor 3: 5
 > - 既然已经有了基本数据类型，为何还要声明并使用这些新的呢？人们目前普遍认为`int`是32位的，因为主流操作系统和计算机仍采用32位。而在过去
 >   16位操作系统时代，int类型是16位的。 根据系统的不同、时代的变化，数据类型的表现形式也随之改变，需要修改程序中使用的数据类型 。
 > - 如果之前已在需要声明4字节数据类型之处使用了`size_t`或`ssize_t`， 则将大大减少代码变动，因为只需要修改并编译`size_t`和`ssize_t`的`typedef`声明即可。在项目中，为了给基本数据类型赋予别名，一般会添加大量`typedef`声明 。而为了与程序员定义的新数据类型加以区分，操作系统定义的数据类型会添加后缀`＿t` 。
+
+<hr>
+
+## ch02 套接字类型与协议设置
+
+### 2.1 套接字协议及其数据传输特性
+
+#### 协议（Protocol）
+
+> 协议是计算机之间对话必备的通信规则。
+
+#### 创建套接字
+
+```c
+#include <sys/socket.h> 
+int socket(int domain, i nt type, int protocol);
+```
+
+C语言中，创建套接字要使用`socket()`函数，下面介绍其参数以及具体使用：
+
+- 协议族（Protocol Family）
+  - `PF_INET`：`IPv4`互联网协议族
+  - `PF_INET6`：`IPv6`互联网协议族
+  - `PF_LOCAL`：本地通信的`UNIX`协议族
+  - `PF_PACKET`：底层套接字的协议族
+  - `PF__IPX`：`IPX Novell`协议族
+
+本书重点讲解`PF_INET`，即`IPv4`互联网协议族。
+
+
+
+- 套接字类型（Type）
+
+  - 面向连接的套接字（`SOCK_STREAM`）
+
+    - 传输过程中数据不会丢失
+
+    - 数据有序到达
+
+    - 传输的数据不存在数据边界
+
+    - > 在面向连接的套接字中， `read`函数和`write`函数的调用次数并无太大意义
+
+    - > 可靠的、按序传递的、基于宇节的面向连接的数据传输方式的套接字
+
+  - 面向消息的套接字（SOCK_DGRAM）
+
+    - 强调快速传输而非传输顺序
+
+    -  传输的数据可能丢失也可能损毁
+
+    - 传输的数据存在数据边界
+
+    - 限制每次传输的数据大小
+
+    - > 不可靠的、不按序传递的、以数据的高速传输为目的的套接字
+
+- 协议的最终选择
+
+  - 同个协议族中可能存在多个数据传输方式相同的协议，所以还需指定最终选择的协议
+
+  - > 参数`PF_INET`指`IPv4`网络协议族，`SOCK_STREAM`是面向连接的数据传输。 满足这2个条件的协议只有`IPPROTO_TCP`
+
+  - > 参数`PF_INET`指`IPv4`网络协议族，`SOCK_DGRAM`指的是面向消息的数据传输方式，满足上述条件的协议只有`IPPROTO_UDP`
+
+#### 验证 **`面向连接的套接字`** 的 **`传输数据无边界性`**
+
+修改`ch01`中的`hello_clint.c`中`read()`函数的调用方式：
+
+```c
+// read()
+while (1)
+{
+    str_len = read(sock, &message[idx ++], 1);
+    if (str_len == -1)
+        error_handling("read() error!");
+    else if (str_len == 0)
+        break;
+
+    cnt += str_len;
+}
+
+printf("Message from server : %s \n", message);
+printf("function read() call count is %d\n", cnt);
+```
+
+客户端运行效果如下：
+
+```shell
+rex@rex-virtual-machine:~/tcpip/ch02$ ./hclient.out 127.0.0.1 7891
+Message from server : Hello World! 
+function read() call count is 13
+```
+
+### 2.5 习题
+
+- (1) 什么是协议？在收发数据中定义协议有何意义？
+
+  - 答：协议是计算机之间对话的通信规则，定义协议，可以明确收发数据是否有序，是否需要建立连接，是否可能丢失，是否存在数据边界等问题。
+
+- (2) 面向连接的TCP套接字传输特性有3点，请分别说明 。
+
+  - 答：
+    - 传输过程中数据不会丢失
+    - 传输的数据有序
+    - 传输的数据不存在数据边界
+
+- (3) 下列哪些是面向消息的套接字的特性？ 
+
+  - a 传输数据可能丢失 
+  - b．没有数据边界 ( Boundary) 
+  - C. 以快速传递为目标 
+  - d． 不限制每次传递数据的大小
+  - e．与面向连接的套接字不同，不存在连接的概念
+  - 答：a、c、e
+
+- (4) 下列数据适合用哪类套接字传输？并给出原因。 
+
+  - a. 演唱会现场直播的多媒体数据（ ) 
+  - b. 某人压缩过的文本文件（ )
+  - c. 网上银行用户与银行之间的数据传递（ ）
+  - 答：a适合面向消息的套接字，b和c适合面向连接的套接字
+
+- (5) 何种类型的套接字不存在数据边界？这类套接字接收数据时需要注意什么？
+
+  - 面向连接的套接字不存在数据边界；接受数据超出缓存大小时，要让发送方停止发送数据，直到接收方把缓存中的数据读取出来。
+
+- (6) `tcp_server.c`和`tcp_client.c`中需多次调用read函数读取服务器端调用 1 次write函数传递的字符串。更改程序，使服务器端多次调用（次数自拟）`write`函数传输数据，客户端调用 1 次`read`函数进行读取。为达到这一目的，客户端需延迟调用read函数，因为客户端要等待服务器端传输所有数据。 Windows和Linux都通过下列代码延迟read或recv函数的调用。
+
+- ```c
+  for(i=0; i<3000; i++) 
+      printf("Wait time %d \n", i);
+  ```
+
+- 让CPU执行多余任务以延迟代码运行的方式称为 `"Busy Waiting"` 。 使用得当即可推迟函数调用。
+
+- 服务器端`tcp_server.c`代码如下：
+
+- ```c
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+  #include <unistd.h>
+  #include <arpa/inet.h>
+  #include <sys/socket.h>
+  void error_handling(char *message);
+  
+  int main(int argc, char *argv[])
+  {
+      int serv_sock;
+      int clnt_sock;
+  
+      struct sockaddr_in serv_addr;
+      struct sockaddr_in clnt_addr;
+      socklen_t clnt_addr_size;
+      int idx = 0, cnt = 0;
+  
+      char message[] = "Hello World!";
+  
+      if (argc != 2)
+      {
+          printf("Usage : %s <port>\n", argv[0]);
+          exit(1);
+      }
+  
+      // socket()
+      serv_sock = socket(PF_INET, SOCK_STREAM, 0);
+      if (serv_sock == -1)
+          error_handling("socket() error");
+  
+      memset(&serv_addr, 0, sizeof(serv_addr));
+      serv_addr.sin_family = AF_INET;
+      serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+      serv_addr.sin_port = htons(atoi(argv[1]));
+  
+      // bind()
+      if (bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1)
+          error_handling("bind() error");
+  
+      // listen()
+      if (listen(serv_sock, 5) == -1)
+          error_handling("listen() error");
+  
+      clnt_addr_size = sizeof(clnt_addr);
+      // accept()
+      clnt_sock = accept(serv_sock, (struct sockaddr *)&clnt_addr, &clnt_addr_size);
+      if (clnt_sock == -1)
+          error_handling("accept() error");
+      
+      // write()
+      int num_wr;
+      while (1)
+      {
+          num_wr = write(clnt_sock, &message[idx ++], 1);
+          if (num_wr == -1)
+              error_handling("write() error");
+          
+          cnt += num_wr;
+  
+          if (message[idx - 1] == '\0')
+              break;
+      }
+  
+      printf("function write() call count is %d\n", cnt);
+  
+      close(clnt_sock);
+      close(serv_sock);
+  
+      return 0;
+  }
+  
+  void error_handling(char *message)
+  {
+      fputs(message, stderr);
+      fputc('\n', stderr);
+      exit(1);
+  }
+  ```
+
+- 客户端`tcp_client.c`代码如下：
+
+- ```c
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+  #include <unistd.h>
+  #include <arpa/inet.h>
+  #include <sys/socket.h>
+  void error_handling(char *message);
+  
+  int main(int argc, char *argv[])
+  {
+      int sock;
+      struct sockaddr_in serv_addr;
+      char message[30];
+      int str_len;
+  
+      if (argc != 3)
+      {
+          printf("Usage : %s <IP> <port>\n", argv[0]);
+          exit(1);
+      }
+  
+      // socket()
+      sock = socket(PF_INET, SOCK_STREAM, 0);
+      if (sock == -1)
+          error_handling("socket() error");
+  
+      memset(&serv_addr, 0, sizeof(serv_addr));
+      serv_addr.sin_family = AF_INET;
+      serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
+      serv_addr.sin_port = htons(atoi(argv[2]));
+  
+      // connect
+      if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1)
+          error_handling("connect() error!");
+   
+      // busy waiting
+      for (int i = 0; i < 10000; i++);
+  
+      // read()
+      str_len = read(sock, message, sizeof(message) - 1);
+      if (str_len == -1)
+          error_handling("read() error!");
+  
+      printf("Message from server : %s \n", message);
+      close(sock);
+      return 0;
+  }
+  
+  void error_handling(char *message)
+  {
+      fputs(message, stderr);
+      fputc('\n', stderr);
+      exit(1);
+  }
+  ```
+
+- 运行效果如下：
+
+- 服务器端先启动，等待客户端连接：
+
+- ```shell
+  rex@rex-virtual-machine:~/tcpip/ch02$ gcc tcp_server.c -o tserver
+  rex@rex-virtual-machine:~/tcpip/ch02$ ./tserver 7891
+  ```
+
+- 客户端启动，并接收服务器端发送的数据：
+
+- ```shell
+  rex@rex-virtual-machine:~/tcpip/ch02$ gcc tcp_client.c -o tclient
+  rex@rex-virtual-machine:~/tcpip/ch02$ ./tclient 127.0.0.1 7891
+  Message from server : Hello World!
+  ```
+
+- 服务器端发送完数据后，结束运行：
+
+- ```shell
+  rex@rex-virtual-machine:~/tcpip/ch02$ ./tserver 7891
+  function write() call count is 13
+  ```
+
+  
